@@ -10,22 +10,45 @@ permissions:
 jobs:
   extract:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract project archive
+      - name: Extract Flutter project
+        shell: bash
         run: |
+          set -euo pipefail
+
           mkdir -p /tmp/co_track
           unzip -o CO_TRACK_DZ_V2_REBUILT.zip -d /tmp/co_track
-          ROOT=$(find /tmp/co_track -name pubspec.yaml -printf '%h\n' | head -n 1)
-          test -n "$ROOT"
-          cp -a "$ROOT"/. .
+
+          ROOT="$(find /tmp/co_track -name pubspec.yaml -printf '%h\n' | head -n 1)"
+          if [ -z "$ROOT" ]; then
+            echo "ERROR: pubspec.yaml introuvable dans le ZIP"
+            exit 1
+          fi
+
+          echo "Projet trouvé dans : $ROOT"
+
+          cp -a "$ROOT"/android "$ROOT"/assets "$ROOT"/lib "$ROOT"/test "$ROOT"/pubspec.yaml "$ROOT"/README.md .
+
+          test -f pubspec.yaml
+          test -f lib/main.dart
+
+          echo "Extraction vérifiée."
 
       - name: Commit extracted project
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Extract Flutter project files" || echo "No changes"
+
+          git add android assets lib test pubspec.yaml README.md
+
+          if git diff --cached --quiet; then
+            echo "Aucun changement à enregistrer."
+            exit 0
+          fi
+
+          git commit -m "Add extracted Flutter project"
           git push
