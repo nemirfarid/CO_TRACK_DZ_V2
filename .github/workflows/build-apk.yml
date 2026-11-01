@@ -1,1 +1,95 @@
 
+name: Build CO TRACK DZ APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/build-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Repair incomplete Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -f android/app/build.gradle ] && [ ! -f android/app/build.gradle.kts ]; then
+            if [ -d android ]; then
+              mv android /tmp/android_incomplete
+            fi
+
+            flutter create \
+              --platforms=android \
+              --org dz.nibras.academy \
+              --project-name co_track_dz \
+              --no-pub \
+              .
+          fi
+
+      - name: Restore Android permissions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          content = manifest.read_text(encoding="utf-8")
+
+          permissions = [
+              '    <uses-permission android:name="android.permission.CAMERA"/>',
+              '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>',
+              '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>',
+          ]
+
+          for permission in permissions:
+              if permission not in content:
+                  content = content.replace(
+                      '<application',
+                      permission + '\n    <application',
+                      1
+                  )
+
+          manifest.write_text(content, encoding="utf-8")
+          PY
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze Flutter project
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CO-TRACK-DZ-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          
